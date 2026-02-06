@@ -1,229 +1,210 @@
 "use client";
 
-import { useState } from "react";
-import { Document, Packer, Paragraph, TextRun } from "docx";
+import { useMemo, useState } from "react";
+import WorksheetPreview from "@/components/WorksheetPreview";
+import type { Difficulty, Worksheet } from "@/lib/types";
 
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+const grades = Array.from({ length: 10 }, (_, i) => `الصف ${i + 1}`);
 
-export default function Home() {
-  const [grade, setGrade] = useState("1");
-  const [lesson, setLesson] = useState("");
-  const [questions, setQuestions] = useState("10");
+const subjects = [
+  "اللغة العربية",
+  "الرياضيات",
+  "العلوم",
+  "الدراسات الاجتماعية",
+  "التربية الإسلامية",
+  "اللغة الإنجليزية",
+  "مهارات تقنية/حاسوب",
+  "مهارات حياتية",
+];
+
+const counts = [5, 10, 15, 20];
+
+export default function Page() {
+  const [grade, setGrade] = useState<string>("الصف 3");
+  const [subject, setSubject] = useState<string>("اللغة العربية");
+  const [topic, setTopic] = useState<string>("");
+  const [count, setCount] = useState<number>(10);
+  const [difficulty, setDifficulty] = useState<Difficulty>("متوسط");
+  const [includeAnswers, setIncludeAnswers] = useState<boolean>(false);
+  const [fontScale, setFontScale] = useState<number>(1);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [data, setData] = useState<Worksheet | null>(null);
+  const [error, setError] = useState<string>("");
 
-  const generateWorksheet = async () => {
-    const cleanLesson = lesson.trim();
-    if (!cleanLesson) {
-      alert("الرجاء إدخال عنوان الدرس");
-      return;
-    }
+  const canGenerate = useMemo(() => topic.trim().length >= 2, [topic]);
 
+  async function generate() {
+    setError("");
     setLoading(true);
-    setResult("");
-
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grade, lesson: cleanLesson, questions }),
+        body: JSON.stringify({ grade, subject, topic, count, difficulty, includeAnswers }),
       });
 
-      const raw = await res.text();
-      if (!res.ok) {
-        setResult(`خطأ من السيرفر (${res.status}):\n${raw}`);
-        return;
-      }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "فشل التوليد");
 
-      const data = JSON.parse(raw);
-      setResult(data.text || "لم يتم توليد محتوى");
-    } catch (error: any) {
-      setResult(`حدث خطأ أثناء الاتصال:\n${String(error?.message ?? error)}`);
+      setData(json);
+    } catch (e: any) {
+      setError(e?.message ?? "حدث خطأ");
     } finally {
       setLoading(false);
     }
-  };
-
-  const downloadWord = async () => {
-    if (!result.trim()) {
-      alert("لا يوجد محتوى لتحميله.");
-      return;
-    }
-
-    const title = `هوية وطني – أوراق عمل ذكية (الصف ${grade})`;
-
-    const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: [
-            new Paragraph({ children: [new TextRun({ text: title, bold: true })] }),
-            new Paragraph({ text: `عنوان الدرس: ${lesson || "-"}` }),
-            new Paragraph({ text: `عدد الأسئلة: ${questions}` }),
-            new Paragraph({ text: "" }),
-            ...result.split("\n").map((line) => new Paragraph({ text: line })),
-          ],
-        },
-      ],
-    });
-
-    const blob = await Packer.toBlob(doc);
-
-    const safeLesson = (lesson.trim() || "worksheet")
-      .replace(/[\\/:*?"<>|]/g, "-")
-      .slice(0, 50);
-
-    downloadBlob(`هوية_وطني_${grade}_${safeLesson}.docx`, blob);
-  };
-
-  const downloadPDF = () => {
-    if (!result.trim()) {
-      alert("لا يوجد محتوى لتحميله.");
-      return;
-    }
-    window.print(); // من نافذة الطباعة اختاري Save as PDF
-  };
+  }
 
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 20 }}>
-      <h1 style={{ textAlign: "center" }}>هوية وطني – أوراق عمل ذكية 🇴🇲</h1>
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        {/* Header */}
+        <div className="rounded-3xl bg-white border shadow-sm p-6 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+            مبادرة تعليمية رقمية
+          </div>
 
-      {/* اسمك في الواجهة فقط */}
-      <p style={{ textAlign: "center", marginTop: 6 }}>
-        إعداد وتصميم: <strong>ثريا المعمري</strong>
-      </p>
+          <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-blue-700">
+            منصة توليد أوراق العمل الذكية
+          </h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 18 }}>
-        <div>
-          <label>الصف الدراسي</label>
-          <select
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
+          <p className="mt-3 text-slate-600 leading-7">
+            اكتبي موضوع الدرس، اختاري الصف والمادة وعدد الأسئلة، وسيتم توليد ورقة عمل
+            <b> بأسئلة متنوعة تلقائيًا</b> ومناسبة للمنهاج العُماني.
+          </p>
+
+          <div className="mt-4 text-sm text-slate-600">
+            إعداد وتصميم: <b>ثريا العمري</b> — متوافقة مع المنهاج العُماني
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="mt-6 grid gap-4 rounded-3xl border bg-white p-6 shadow-sm">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-sm font-bold text-slate-800">الصف الدراسي</label>
+              <select
+                className="mt-2 w-full rounded-2xl border bg-white px-4 py-3"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+              >
+                {grades.map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-bold text-slate-800">المادة</label>
+              <select
+                className="mt-2 w-full rounded-2xl border bg-white px-4 py-3"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              >
+                {subjects.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-bold text-slate-800">موضوع الدرس</label>
+            <input
+              className="mt-2 w-full rounded-2xl border bg-white px-4 py-3"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="مثال: التفكير الناقد / دورة الماء / جمع الكسور / النص القرائي..."
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="text-sm font-bold text-slate-800">عدد الأسئلة</label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {counts.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCount(c)}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
+                      count === c ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700"
+                    }`}
+                    type="button"
+                  >
+                    {c} سؤالًا
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-bold text-slate-800">مستوى الصعوبة</label>
+              <div className="mt-2 grid gap-2">
+                {(["سهل", "متوسط", "صعب"] as Difficulty[]).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDifficulty(d)}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
+                      difficulty === d ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700"
+                    }`}
+                    type="button"
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-bold text-slate-800">الخط</label>
+              <div className="mt-2 rounded-2xl border bg-white px-4 py-4">
+                <input
+                  type="range"
+                  min={0.9}
+                  max={1.3}
+                  step={0.05}
+                  value={fontScale}
+                  onChange={(e) => setFontScale(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                <div className="mt-2 text-xs text-slate-600">
+                  حجم الخط: <b>{fontScale.toFixed(2)}x</b>
+                </div>
+
+                <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={includeAnswers}
+                    onChange={(e) => setIncludeAnswers(e.target.checked)}
+                  />
+                  تضمين مفتاح الإجابات
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <button
+            disabled={!canGenerate || loading}
+            onClick={generate}
+            className={`rounded-2xl px-5 py-4 text-lg font-extrabold text-white ${
+              !canGenerate || loading ? "bg-slate-300" : "bg-blue-700 hover:bg-blue-800"
+            }`}
+            type="button"
           >
-            <option value="1">الصف الأول</option>
-            <option value="2">الصف الثاني</option>
-            <option value="3">الصف الثالث</option>
-            <option value="4">الصف الرابع</option>
-          </select>
+            {loading ? "جاري إنشاء ورقة العمل..." : "إنشاء ورقة العمل"}
+          </button>
+
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-800">
+              {error}
+            </div>
+          )}
         </div>
 
-        <div>
-          <label>عدد الأسئلة</label>
-          <select
-            value={questions}
-            onChange={(e) => setQuestions(e.target.value)}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          >
-            <option value="5">5</option>
-            <option value="8">8</option>
-            <option value="10">10</option>
-            <option value="12">12</option>
-            <option value="15">15</option>
-            <option value="20">20</option>
-          </select>
+        {/* Preview */}
+        <div className="mt-6">
+          <WorksheetPreview data={data} fontScale={fontScale} showAnswers={includeAnswers} />
         </div>
       </div>
-
-      <div style={{ marginTop: 14 }}>
-        <label>عنوان الدرس</label>
-        <input
-          value={lesson}
-          onChange={(e) => setLesson(e.target.value)}
-          placeholder="مثال: حب الوطن"
-          style={{ width: "100%", padding: 10, marginTop: 6 }}
-        />
-      </div>
-
-      <button
-        onClick={generateWorksheet}
-        style={{
-          width: "100%",
-          marginTop: 14,
-          padding: 14,
-          background: "#0a5c36",
-          color: "#fff",
-          border: "none",
-          cursor: "pointer",
-          fontSize: 16,
-          fontWeight: 700,
-          borderRadius: 10,
-        }}
-      >
-        {loading ? "جاري الإنشاء..." : "إنشاء ورقة العمل"}
-      </button>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-        <button
-          onClick={downloadWord}
-          disabled={!result.trim()}
-          style={{
-            padding: 12,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            opacity: result.trim() ? 1 : 0.5,
-            fontWeight: 700,
-            borderRadius: 10,
-          }}
-        >
-          تحميل Word
-        </button>
-
-        <button
-          onClick={downloadPDF}
-          disabled={!result.trim()}
-          style={{
-            padding: 12,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            opacity: result.trim() ? 1 : 0.5,
-            fontWeight: 700,
-            borderRadius: 10,
-          }}
-        >
-          تحميل PDF
-        </button>
-      </div>
-
-      {result && (
-        <div
-          dir="rtl"
-          style={{
-            marginTop: 18,
-            padding: 18,
-            border: "1px solid #ddd",
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            lineHeight: 2.0,
-            fontSize: 16,
-            fontFamily: "Tahoma, Arial, sans-serif",
-            background: "#fff",
-          }}
-        >
-          {result}
-        </div>
-      )}
-
-      {/* طباعة/PDF: يطبع الورقة فقط */}
-      <style>{`
-        @media print {
-          button, select, input, label, h1, p { display: none !important; }
-          main { margin: 0 !important; padding: 0 !important; max-width: none !important; }
-          div { border: none !important; padding: 0 !important; }
-          @page { size: A4; margin: 12mm; }
-        }
-      `}</style>
-    </main>
+    </div>
   );
 }
